@@ -2,32 +2,52 @@ package com.nishad.yummyesd.service;
 
 import com.nishad.yummyesd.dto.CustomerRequest;
 import com.nishad.yummyesd.dto.CustomerResponse;
+import com.nishad.yummyesd.dto.LoginRequest;
 import com.nishad.yummyesd.entity.Customer;
+import com.nishad.yummyesd.exception.CustomerNotFoundException;
+import com.nishad.yummyesd.helper.EncryptionService;
+import com.nishad.yummyesd.helper.JWTHelper;
 import com.nishad.yummyesd.mapper.CustomerMapper;
 import com.nishad.yummyesd.repo.CustomerRepo;
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.web.bind.annotation.RequestBody;
+
+import java.util.UUID;
+
+import static java.lang.String.format;
 
 @Service
 @RequiredArgsConstructor
 public class CustomerService {
-    private final CustomerRepo repo;
-    private final CustomerMapper mapper;
-
+    private final CustomerRepo customerRepo;
+    private final CustomerMapper customerMapper;
+    private final EncryptionService encryptionService;
+    private final JWTHelper jwtHelper;
     public String createCustomer(CustomerRequest request) {
-        Customer customer = mapper.toEntity(request);
-        repo.save(customer);
-        return "Created";
+        Customer customer = customerMapper.toCustomer(request);
+        customer.setPassword(encryptionService.encode(customer.getPassword()));
+        customerRepo.save(customer);
+        return "Customer Created Successfully";
     }
 
-    public String loginCustomer(String email, String password) {
-        Customer customer = repo.findByEmail(email);
-        if (customer != null && customer.getPassword().equals(password)) {
-            return "user logged in successfully";
-        } else {
-            throw new RuntimeException("Invalid email or password");
+    public Customer getCustomer(String email) {
+        return customerRepo.findByEmail(email)
+                .orElseThrow(() -> new CustomerNotFoundException(
+                        format("Cannot update Customer:: No customer found with the provided ID:: %s", email)
+                ));
+    }
+
+    public CustomerResponse retrieveCustomer(String email) {
+        Customer customer = getCustomer(email);
+        return customerMapper.toCustomerResponse(customer);
+    }
+
+    public String login(LoginRequest request) {
+        Customer customer = getCustomer(request.email());
+        if(!encryptionService.validates(request.password(), customer.getPassword())) {
+            return "Wrong Password or Email";
         }
+
+        return jwtHelper.generateToken(request.email());
     }
 }
